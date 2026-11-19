@@ -159,7 +159,7 @@ function saveCurrent(){
  const rec=d.zen?{response:"",done,completionRequested:false,zenRead:done}:{response:document.getElementById("response").value,done,completionRequested:false};
  write(d,rec);closeDay();
 }
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#39;"}[c]))}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>{switch(c){case "&":return "&amp;";case "<":return "&lt;";case ">":return "&gt;";case '"':return "&quot;";default:return "&#39;"}})}
 function reportRows(){
  return days.map(d=>({d,s:read(d)})).filter(x=>x.d.zen||x.s.done||(x.s.response||"").trim()).map(({d,s})=>{
   const body=d.zen?'<blockquote>'+esc(d.thought)+'</blockquote><p><strong>Stato:</strong> '+(s.done?"letto e consegnato":"non consegnato")+'</p>':'<div>'+d.task+'</div><p><strong>Risposta:</strong> '+esc((s.response||"").trim()||"(nessuna risposta scritta)")+'</p><p><strong>Stato:</strong> '+(s.done?"completata · 1 voto":"iniziata")+'</p>';
@@ -173,12 +173,7 @@ function makePdf(){
 }
 function makeEmail(){
  const email=document.getElementById("teacherEmail").value.trim();if(!email||!document.getElementById("teacherEmail").checkValidity()){document.getElementById("teacherEmail").focus();alert("Inserisci un indirizzo email valido del docente.");return}
- const {name,score}=reportInfo(),body=["Buongiorno,","invio il mio calendario dell’Avvento compilato.","Alunno/a: "+name,"Classe: "+gradeName,"Voti raccolti: "+score+" / 15","",...days.filter(d=>d.zen||read(d).done||(read(d).response||"").trim()).map(d=>{const s=read(d);return d.zen?d.n+" dicembre · Pensiero zen: "+d.thought+"
-Stato: "+(s.done?"letto e consegnato":"non consegnato"):d.n+" dicembre · "+d.subject+" — "+d.title+"
-Stato: "+(s.done?"completata · 1 voto":"iniziata")+"
-Risposta: "+((s.response||"").trim()||"(nessuna risposta scritta)")}),"","Cordiali saluti"].join("
-
-");
+ const nl=String.fromCharCode(10),{name,score}=reportInfo(),body=["Buongiorno,","invio il mio calendario dell’Avvento compilato.","Alunno/a: "+name,"Classe: "+gradeName,"Voti raccolti: "+score+" / 15","",...days.filter(d=>d.zen||read(d).done||(read(d).response||"").trim()).map(d=>{const s=read(d);return d.zen?d.n+" dicembre · Pensiero zen: "+d.thought+nl+"Stato: "+(s.done?"letto e consegnato":"non consegnato"):d.n+" dicembre · "+d.subject+" — "+d.title+nl+"Stato: "+(s.done?"completata · 1 voto":"iniziata")+nl+"Risposta: "+((s.response||"").trim()||"(nessuna risposta scritta)")}),"","Cordiali saluti"].join(nl+nl);
  const subject="Calendario dell’Avvento · "+name+" · Seconda Scienze Umane";window.location.href="mailto:"+encodeURIComponent(email)+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
 }
 document.getElementById("response").addEventListener("input",saveDraft);document.getElementById("done").addEventListener("change",saveDraft);document.getElementById("studentName").addEventListener("input",saveState);
