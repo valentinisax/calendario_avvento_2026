@@ -87,7 +87,7 @@ main{max-width:1100px;margin:0 auto;padding:22px 18px 60px}
  <article class="modal">
   <div class="modal-head"><div class="modal-kicker" id="modalKicker">La sfida del giorno</div><h2 id="modalTitle"></h2><div class="modal-date" id="modalDate"></div><button class="close" id="close" aria-label="Chiudi">×</button></div>
   <div class="modal-body"><div class="goal" id="goal"></div><div class="task" id="task"></div>
-   <div class="answer"><label for="response">Il mio lavoro / il mio indizio (facoltativo)</label><textarea id="response" placeholder="Scrivi qui, oppure usa il quaderno e annota la parola-indizio..."></textarea><div class="tiny">Il testo rimane in questa pagina sul dispositivo: non viene inviato a scuola.</div></div>
+   <div class="answer"><label for="response">Il mio lavoro / il mio indizio (facoltativo)</label><textarea id="response" placeholder="Scrivi qui, oppure usa il quaderno e annota la parola-indizio..."></textarea><div class="tiny" id="saveStatus" role="status" aria-live="polite">Le modifiche si salvano automaticamente su questo dispositivo.</div></div>
    <label class="checkline"><input type="checkbox" id="done"> <span>Ho completato l’esercizio: vale 1 voto.</span></label>
    <div class="actions"><button class="btn primary" id="save">Salva e torna al calendario</button><button class="btn secondary" id="printTask">Stampa questa attività</button></div>
    <div class="access" id="accessTip"></div>
@@ -139,14 +139,28 @@ const gradeNames={"1p":"Prima primaria","2p":"Seconda primaria","3p":"Terza prim
 function gradeKey(g,v,d){return `${g}_${v}`;}
 const calendar=document.getElementById("calendar"),overlay=document.getElementById("overlay");
 let active=null;
+const STORAGE_SCOPE="urbania-avvento-2026";
+const STORAGE_STATE=STORAGE_SCOPE+"-state-v2";
+const defaultPersistentState={studentName:"",grade:"1p",version:"standard",work:{},lastUpdated:""};
+let persistentState={...defaultPersistentState};
+try{const stored=JSON.parse(localStorage.getItem(STORAGE_STATE)||"null");if(stored)persistentState={...defaultPersistentState,...stored,work:stored.work&&typeof stored.work==="object"?stored.work:{}}}catch(e){console.error("Errore lettura progressi locali:",e)}
+if(persistentState.grade&&[...document.getElementById("grade").options].some(o=>o.value===persistentState.grade))document.getElementById("grade").value=persistentState.grade;
+if(persistentState.version&&[...document.getElementById("version").options].some(o=>o.value===persistentState.version))document.getElementById("version").value=persistentState.version;
+document.getElementById("studentName").value=persistentState.studentName||"";
+function savePersistentState(){try{persistentState.studentName=document.getElementById("studentName").value;persistentState.grade=document.getElementById("grade").value;persistentState.version=document.getElementById("version").value;persistentState.lastUpdated=new Date().toISOString();localStorage.setItem(STORAGE_STATE,JSON.stringify(persistentState));return true}catch(e){console.error("Errore salvataggio progressi locali:",e);return false}}
+function persistRecord(v,d,g,record){const id=key(v,d,g),saved={...record,updatedAt:new Date().toISOString()};try{localStorage.setItem(id,JSON.stringify(saved));persistentState.work[id]=saved;if(!savePersistentState())throw new Error("localStorage non disponibile");return true}catch(e){console.error("Errore salvataggio esercizio:",e);return false}}
+function read(v,d,g){const id=key(v,d,g);try{const saved=persistentState.work[id]||JSON.parse(localStorage.getItem(id)||"null")||{};if(saved&&Object.keys(saved).length)persistentState.work[id]=saved;return saved}catch(e){return {}}}
+function collectAnswers(){const answers={};document.querySelectorAll("#task [data-answer-id]").forEach(input=>{if(input.type==="radio"){if(input.checked)answers[input.dataset.answerId]=input.value}else if(input.tagName==="SELECT"&&input.value)answers[input.dataset.answerId]=input.value});return answers}
+function persistActiveDraft(){if(!active)return;const {d,v,g}=active;if(!windowState(d).available){document.getElementById("saveStatus").textContent="Finestra chiusa: le risposte non possono più essere salvate.";return}const previous=read(v,d,g),done=!!previous.done,requested=document.getElementById("done").checked;const record=d.zen?{response:"",done,answers:{},zenRead:done,completionRequested:requested}:{response:document.getElementById("response").value,done,answers:collectAnswers(),completionRequested:requested};document.getElementById("saveStatus").textContent=persistRecord(v,d,g,record)?"✓ Modifiche salvate automaticamente su questo dispositivo.":"Impossibile salvare localmente: controlla le impostazioni del browser."}
+
 function localToday(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")}
 function dateLabel(s){return new Intl.DateTimeFormat("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(new Date(s+"T12:00:00"))}
 const teacherPreview=false;
 function windowBounds(d){const [y,m,day]=d.date.split("-").map(Number);return {start:new Date(y,m-1,day,0,0,0,0),end:new Date(y,m-1,day+1,18,0,0,0)}}
 function windowState(d,now=new Date()){const {start,end}=windowBounds(d);if(teacherPreview)return {available:true,expired:false,start,end};return {available:now>=start&&now<end,expired:now>=end,start,end}}
 function dateTimeLabel(date){return new Intl.DateTimeFormat("it-IT",{weekday:"long",day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"}).format(date)}
-function key(v,d,g){return "urbania-avvento-2026-"+g+"-"+v+"-"+d.n}
-function read(v,d,g){try{return JSON.parse(localStorage.getItem(key(v,d,g))||"{}")}catch(e){return {}}}
+function key(v,d,g){return STORAGE_SCOPE+"-"+g+"-"+v+"-"+d.n}
+
 function render(){
  const v=document.getElementById("version").value,g=document.getElementById("grade").value,now=new Date();calendar.innerHTML="";
  let completed=0;
@@ -189,7 +203,7 @@ function openDay(d,v,g){
   document.getElementById("task").innerHTML=(v==="dsa"||v==="disabilita")?quickExercise(d,g,v,saved.answers||{}):pathwayActivity(gradeActivity[String(d.n)][gradeKey(g,v,d)],g,v,d);
  }
  document.getElementById("response").value=saved.response||"";
- document.getElementById("done").checked=!!saved.done;
+ document.getElementById("done").checked=!!(saved.done||saved.completionRequested);document.getElementById("saveStatus").textContent=saved.updatedAt?"Progressi ripristinati dal salvataggio locale.":"Le modifiche si salvano automaticamente su questo dispositivo.";
  document.getElementById("accessTip").textContent=accessTips[v];
  overlay.classList.add("show");document.body.style.overflow="hidden";
 }
@@ -272,17 +286,17 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&overlay.classList.c
 document.getElementById("save").onclick=()=>{
  if(!active)return;const {d,v,g}=active;
  if(!windowState(d).available){alert("Il tempo per completare questa finestra è terminato.");closeModal();return;}
- if(d.zen){localStorage.setItem(key(v,d,g),JSON.stringify({response:"",done:document.getElementById("done").checked,answers:{},zenRead:document.getElementById("done").checked}));closeModal();return;}
- const answers={};
- document.querySelectorAll("#task [data-answer-id]").forEach(input=>{if(input.type==="radio"){if(input.checked)answers[input.dataset.answerId]=input.value;}else if(input.tagName==="SELECT"&&input.value)answers[input.dataset.answerId]=input.value;});
+ if(d.zen){const done=document.getElementById("done").checked;persistRecord(v,d,g,{response:"",done,answers:{},zenRead:done,completionRequested:false});closeModal();return;}
+ const answers=collectAnswers();
  const needsQuiz=v==="dsa"||v==="disabilita";
  if(needsQuiz&&Object.keys(answers).length<3){alert("Seleziona una risposta per ogni esercizio prima di salvare.");return;}
- localStorage.setItem(key(v,d,g),JSON.stringify({response:document.getElementById("response").value,done:document.getElementById("done").checked,answers}));
+ persistRecord(v,d,g,{response:document.getElementById("response").value,done:document.getElementById("done").checked,answers,completionRequested:false});
  closeModal();
 };
+document.getElementById("response").addEventListener("input",persistActiveDraft);document.getElementById("done").addEventListener("change",persistActiveDraft);document.getElementById("task").addEventListener("input",persistActiveDraft);document.getElementById("task").addEventListener("change",persistActiveDraft);document.getElementById("studentName").addEventListener("input",savePersistentState);
 document.getElementById("printTask").onclick=()=>window.print();
-document.getElementById("version").addEventListener("change",render);
-document.getElementById("grade").addEventListener("change",render);
+document.getElementById("version").addEventListener("change",()=>{savePersistentState();render()});
+document.getElementById("grade").addEventListener("change",()=>{savePersistentState();render()});
 const sendOverlay=document.getElementById("sendOverlay");
 document.getElementById("openSend").onclick=()=>sendOverlay.classList.add("show");
 document.getElementById("closeSend").onclick=()=>sendOverlay.classList.remove("show");
